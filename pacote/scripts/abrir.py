@@ -49,6 +49,7 @@ def criar_atalho():
     if os.name != "nt":
         return None
     area_de_trabalho = pasta_especial(0x0010, Path.home() / "Desktop")
+    area_de_trabalho.mkdir(parents=True, exist_ok=True)
     atalho = area_de_trabalho / NOME_ATALHO
     # os caminhos vão por variáveis de ambiente, para não ter problema com espaços e acentos
     ambiente = dict(os.environ,

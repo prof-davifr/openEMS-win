@@ -107,6 +107,7 @@ jobs:
           $codigo = $LASTEXITCODE
           Get-Content "$env:LOCALAPPDATA\openEMS-lab-instalacao.log"
           if ($codigo -ne 0) { throw "INSTALAR.bat falhou (código $codigo)" }
+          if (-not (Test-Path "$env:USERPROFILE\Desktop\openEMS Lab.lnk")) { throw "O atalho não foi criado" }
 
       - name: Rodar os notebooks no pacote instalado
         env:
