@@ -56,6 +56,7 @@ def criar_atalho():
                     ALVO=str(RAIZ / "ABRIR.bat"),
                     PASTA=str(RAIZ),
                     ICONE=str(RAIZ / "openEMS" / "AppCSXCAD.exe") + ",0")
+    ambiente.pop("PSModulePath", None)  # o do PowerShell 7 quebra o PowerShell 5.1
     comando = ("$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:ATALHO); "
                "$s.TargetPath = $env:ALVO; $s.WorkingDirectory = $env:PASTA; "
                "$s.IconLocation = $env:ICONE; $s.Description = 'Abre o Jupyter com o openEMS'; $s.Save()")

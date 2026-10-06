@@ -30,6 +30,9 @@ echo Instalacao iniciada em %DATE% %TIME% > "%LOG%"
 
 if not exist "%TRABALHO%" mkdir "%TRABALHO%"
 
+rem Um PSModulePath herdado do PowerShell 7 quebra o PowerShell 5.1 chamado abaixo.
+set "PSModulePath="
+
 rem ---------------------------------------------------------------- 1. pacote
 if exist "%~dp0%PACOTE%" (
     echo [1/4] Pacote encontrado ao lado do instalador. Nada a baixar.
@@ -75,13 +78,13 @@ if not defined SHA (
     goto extrair
 )
 echo [2/4] Conferindo a integridade do pacote...
-set "SHA_ARQUIVO=%SHA%"
-powershell -NoProfile -NonInteractive -Command ^
-  "$esperado = ((Get-Content -Raw $env:SHA_ARQUIVO).Trim() -split '\s+')[0];" ^
-  "$real = (Get-FileHash -Algorithm SHA256 $env:ZIP).Hash;" ^
-  "if ($real -ne $esperado) { Write-Output ('esperado ' + $esperado + ', obtido ' + $real); exit 1 }" >> "%LOG%" 2>&1
-if errorlevel 1 (
-    echo [ERRO] O pacote baixado esta corrompido. Apague a pasta abaixo e rode o instalador de novo:
+set /p ESPERADO=<"%SHA%"
+set "REAL="
+for /f "delims=" %%H in ('certutil -hashfile "%ZIP%" SHA256 ^| findstr /v ":"') do set "REAL=%%H"
+if defined REAL set "REAL=%REAL: =%"
+echo SHA256 esperado %ESPERADO%, obtido %REAL% >> "%LOG%"
+if /i not "%REAL%"=="%ESPERADO%" (
+    echo [ERRO] O pacote esta corrompido. Apague a pasta abaixo e rode o instalador de novo:
     echo        %TRABALHO%
     goto falha
 )
