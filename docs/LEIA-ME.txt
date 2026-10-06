@@ -1,0 +1,24 @@
+openEMS Lab para Windows
+========================
+
+Para usar:      dois cliques em ABRIR.bat (ou no atalho "openEMS Lab" na Area de Trabalho)
+Para conferir:  dois cliques em VERIFICAR.bat
+
+Conteudo desta pasta:
+
+  ABRIR.bat         abre o JupyterLab com o openEMS pronto para uso
+  VERIFICAR.bat     confere a instalacao e roda uma simulacao de teste
+  openEMS\          openEMS oficial para Windows (openEMS.exe, AppCSXCAD.exe, tutoriais)
+  python\           Python 3.13 com numpy, scipy, matplotlib, JupyterLab e o openEMS
+  notebooks\        copias originais dos notebooks
+  codigo-emslab\    codigo do pacote de apoio emslab, para leitura
+  versao.txt        versao deste pacote
+
+Os seus notebooks ficam em Documentos\openEMS-notebooks.
+Esta pasta pode ser apagada e instalada de novo sem perder os seus notebooks.
+
+Instrucoes e problemas comuns: https://github.com/prof-davifr/openEMS-win
+
+Licencas: o openEMS (GPL-3.0) e o CSXCAD (LGPL-3.0) sao de Thorsten Liebig e
+colaboradores. Codigo-fonte: https://github.com/thliebig/openEMS-Project
+Os textos das licencas estao na pasta openEMS\. Este pacote e GPL-3.0-or-later (LICENSE).

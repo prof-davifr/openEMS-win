@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emslab"
+version = "0.1.0"
+description = "Funções de apoio para simular sensores de micro-ondas com o openEMS"
+requires-python = ">=3.10"
+dependencies = ["numpy", "matplotlib"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

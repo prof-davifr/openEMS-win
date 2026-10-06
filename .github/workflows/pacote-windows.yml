@@ -1,0 +1,155 @@
+name: Pacote para Windows
+
+# Monta o pacote portátil (Python + openEMS + Jupyter + notebooks), testa num
+# Windows real a partir de uma pasta com espaço e acento, e publica um release
+# quando chega uma tag v*.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  OPENEMS_TAG: v0.37.0-rc3
+  OPENEMS_ZIP: openEMS_x64_v0.37.0-rc3_msvc.zip
+  OPENEMS_SHA256: 948d04e67a0b7ee4b149176e746b23e609a8ac46c525ba75d6c11071f354339a
+  PYTHON_VERSION: "3.13"
+  PACOTE: openEMS-lab-windows.zip
+
+jobs:
+  pacote:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+
+      - name: Baixar e conferir o openEMS
+        run: |
+          $url = "https://github.com/thliebig/openEMS-Project/releases/download/$env:OPENEMS_TAG/$env:OPENEMS_ZIP"
+          Invoke-WebRequest -Uri $url -OutFile $env:OPENEMS_ZIP
+          $hash = (Get-FileHash -Algorithm SHA256 $env:OPENEMS_ZIP).Hash
+          if ($hash -ne $env:OPENEMS_SHA256) { throw "SHA256 do openEMS diferente: $hash" }
+          New-Item -ItemType Directory -Force build/openEMS-lab | Out-Null
+          Expand-Archive $env:OPENEMS_ZIP -DestinationPath build/openEMS-lab
+          if (-not (Test-Path build/openEMS-lab/openEMS/openEMS.exe)) { throw "openEMS.exe não encontrado" }
+
+      - name: Python portátil
+        run: |
+          $env:UV_PYTHON_INSTALL_DIR = "$PWD/build/uv-python"
+          uv python install $env:PYTHON_VERSION
+          # a pasta real (o uv também cria um atalho de pasta "cpython-3.13-...")
+          $origem = Get-ChildItem build/uv-python -Directory |
+            Where-Object { $_.Name -like "cpython-$env:PYTHON_VERSION.*" -and -not $_.LinkType } |
+            Select-Object -First 1
+          Copy-Item -Recurse $origem.FullName build/openEMS-lab/python
+          # o pacote é um Python independente: libera a instalação direta de pacotes
+          Remove-Item -Force -ErrorAction SilentlyContinue build/openEMS-lab/python/Lib/EXTERNALLY-MANAGED
+          & build/openEMS-lab/python/python.exe --version
+
+      - name: Bibliotecas Python
+        run: |
+          $py = "build/openEMS-lab/python/python.exe"
+          $rodas = Get-ChildItem build/openEMS-lab/openEMS/python/*-cp313-*.whl | ForEach-Object FullName
+          uv pip install --python $py --link-mode copy $rodas numpy scipy matplotlib h5py jupyterlab ipykernel scikit-rf
+          uv pip install --python $py --link-mode copy ./emslab
+          # avisos e notícias do JupyterLab confundem quem está começando
+          $config = "build/openEMS-lab/python/share/jupyter/lab/settings"
+          New-Item -ItemType Directory -Force $config | Out-Null
+          Copy-Item pacote/overrides.json $config/
+          uv pip list --python $py
+
+      - name: Montar o pacote
+        run: |
+          $raiz = "build/openEMS-lab"
+          Copy-Item pacote/ABRIR.bat, pacote/VERIFICAR.bat $raiz/
+          Copy-Item -Recurse pacote/scripts $raiz/scripts
+          Copy-Item -Recurse notebooks $raiz/notebooks
+          Copy-Item -Recurse emslab/src/emslab $raiz/codigo-emslab
+          Copy-Item docs/LEIA-ME.txt, LICENSE $raiz/
+          Invoke-WebRequest -Uri https://raw.githubusercontent.com/thliebig/openEMS/master/COPYING -OutFile $raiz/openEMS/LICENCA-openEMS.txt
+          Invoke-WebRequest -Uri https://raw.githubusercontent.com/thliebig/CSXCAD/master/COPYING -OutFile $raiz/openEMS/LICENCA-CSXCAD.txt
+          $versao = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME } else { "dev-$($env:GITHUB_SHA.Substring(0, 7))" }
+          "pacote $versao`nopenEMS $env:OPENEMS_TAG`n$(& $raiz/python/python.exe --version)" | Set-Content $raiz/versao.txt
+          Get-ChildItem -Recurse -Directory -Filter __pycache__ $raiz | Remove-Item -Recurse -Force
+          # o Windows limita caminhos a 260 caracteres; C:\Users\<nome>\AppData\Local\openEMS-lab\ usa ~50
+          $base = (Resolve-Path $raiz).Path.Length
+          $maior = Get-ChildItem -Recurse -File $raiz | Sort-Object { $_.FullName.Length } | Select-Object -Last 1
+          $tamanho = $maior.FullName.Length - $base
+          Write-Host "Maior caminho relativo: $tamanho caracteres ($($maior.FullName))"
+          if ($tamanho -gt 190) { throw "Caminho longo demais para o Windows: $tamanho" }
+          # 7z grava os caminhos com "/", que o tar.exe do Windows extrai sem problema
+          Push-Location build
+          7z a -tzip -mx=7 "../$env:PACOTE" openEMS-lab | Select-Object -Last 3
+          Pop-Location
+          (Get-FileHash -Algorithm SHA256 $env:PACOTE).Hash | Set-Content -NoNewline "$env:PACOTE.sha256"
+          "{0:N0} MB" -f ((Get-Item $env:PACOTE).Length / 1MB)
+
+      # pwsh, não cmd: o cmd lê o script na página de código do console e estraga o "Ç"
+      - name: Testar o instalador numa conta com espaço e acento
+        env:
+          EMSLAB_TESTE: "1"
+          EMSLAB_SEM_JANELA: "1"
+        run: |
+          $env:USERPROFILE = "C:\Users\Aluno Ção"
+          $env:LOCALAPPDATA = "$env:USERPROFILE\AppData\Local"
+          New-Item -ItemType Directory -Force $env:LOCALAPPDATA, instalador | Out-Null
+          Copy-Item INSTALAR.bat, $env:PACOTE, "$env:PACOTE.sha256" instalador/
+          cmd /c instalador\INSTALAR.bat
+          $codigo = $LASTEXITCODE
+          Get-Content "$env:LOCALAPPDATA\openEMS-lab-instalacao.log"
+          if ($codigo -ne 0) { throw "INSTALAR.bat falhou (código $codigo)" }
+
+      - name: Rodar os notebooks no pacote instalado
+        env:
+          EMSLAB_SEM_JANELA: "1"
+          MPLBACKEND: Agg
+        run: |
+          $env:USERPROFILE = "C:\Users\Aluno Ção"
+          $raiz = "$env:USERPROFILE\AppData\Local\openEMS-lab"
+          $env:CSXCAD_INSTALL_PATH = "$raiz\openEMS"
+          $env:OPENEMS_INSTALL_PATH = "$raiz\openEMS"
+          $env:PYTHONNOUSERSITE = "1"
+          $py = "$raiz\python\python.exe"
+          foreach ($n in "00", "01", "02", "03") {
+            $nb = (Get-ChildItem "$raiz\notebooks\${n}_*.ipynb").FullName
+            & $py -m nbconvert --to notebook --execute --ExecutePreprocessor.timeout=1800 --output-dir saida $nb
+            if ($LASTEXITCODE -ne 0) { throw "O notebook $n falhou" }
+          }
+          # usuário com acento: as simulações têm de ir para C:\Users\Public
+          $base = & $py -c "import emslab; print(emslab.pasta_base())"
+          Write-Host "Pasta das simulações: $base"
+          if ($base -notlike "C:\Users\Public*") { throw "pasta_base não trocou para C:\Users\Public" }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: openEMS-lab-windows
+          path: |
+            ${{ env.PACOTE }}
+            ${{ env.PACOTE }}.sha256
+            INSTALAR.bat
+          retention-days: 14
+
+      - name: Publicar release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            ${{ env.PACOTE }}
+            ${{ env.PACOTE }}.sha256
+            INSTALAR.bat
+          body: |
+            Pacote do openEMS para Windows, sem administrador.
+
+            **Para instalar:** baixe `INSTALAR.bat`, dê dois cliques e siga as mensagens.
+            Veja as instruções completas no [README](https://github.com/${{ github.repository }}#readme).
+
+            Conteúdo: openEMS ${{ env.OPENEMS_TAG }}, Python ${{ env.PYTHON_VERSION }}, JupyterLab e os notebooks do curso.
